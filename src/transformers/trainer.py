@@ -2229,6 +2229,7 @@ class Trainer:
                 rng_to_sync = True
 
             step = -1
+            grads = None
             for step, inputs in enumerate(epoch_iterator):
                 total_batched_samples += 1
 
@@ -2267,7 +2268,7 @@ class Trainer:
                     self.control = self.callback_handler.on_step_begin(args, self.state, self.control)
 
                 with self.accelerator.accumulate(model):
-                    tr_loss_step = self.training_step(model, inputs, step)
+                    tr_loss_step, grads = self.training_step(model, inputs, grads)
 
                 if (
                     args.logging_nan_inf_filter
@@ -3281,7 +3282,7 @@ class Trainer:
 
         return ctx_manager
 
-    def training_step(self, model: nn.Module, inputs: Dict[str, Union[torch.Tensor, Any]], step: int) -> torch.Tensor:
+    def training_step(self, model: nn.Module, inputs: Dict[str, Union[torch.Tensor, Any]], grads) -> torch.Tensor:
         """
         Perform a training step on a batch of inputs.
 
@@ -3310,16 +3311,16 @@ class Trainer:
         del inputs
         # TOdO: add args
         args = {"filter": "ema", "window_size": 100, "lamb": 0.5}  # choices=["none", "ma", "ema", "fir"]
-        trigger = step < 500 if args.two_stage else False
+        trigger = self.state.global_step < 500 if args.two_stage else False
         if self.args.grokking_filter == "none":
             pass
         elif self.args.grokking_filter == "ma":
             # TODO: Where does grads come from?
             grads = gradfilter_ma(
-                model, grads=model.grads, window_size=self.args.grokking_window, lamb=self.args.lamb, trigger=trigger
+                model, grads=grads, window_size=self.args.grokking_window, lamb=self.args.lamb, trigger=trigger
             )
         elif self.args.grokking_filter == "ema":
-            grads = gradfilter_ema(model, grads=model.grads, alpha=self.args.grokking_alpha, lamb=args.lamb)
+            grads = gradfilter_ema(model, grads=grads, alpha=self.args.grokking_alpha, lamb=args.lamb)
         else:
             raise ValueError(f"Invalid gradient filter type `{self.args.grokking_filter}`")
 
@@ -3338,7 +3339,7 @@ class Trainer:
         else:
             self.accelerator.backward(loss, **kwargs)
 
-        return loss.detach() / self.args.gradient_accumulation_steps
+        return loss.detach() / self.args.gradient_accumulation_steps, grads
 
     def compute_loss(self, model, inputs, return_outputs=False):
         """
