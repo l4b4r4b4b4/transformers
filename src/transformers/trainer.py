@@ -146,6 +146,8 @@ from .utils import (
     PushToHubMixin,
     can_return_loss,
     find_labels,
+    gradfilter_ema,
+    gradfilter_ma,
     is_accelerate_available,
     is_apex_available,
     is_bitsandbytes_available,
@@ -2265,7 +2267,7 @@ class Trainer:
                     self.control = self.callback_handler.on_step_begin(args, self.state, self.control)
 
                 with self.accelerator.accumulate(model):
-                    tr_loss_step = self.training_step(model, inputs)
+                    tr_loss_step = self.training_step(model, inputs, step)
 
                 if (
                     args.logging_nan_inf_filter
@@ -3279,7 +3281,7 @@ class Trainer:
 
         return ctx_manager
 
-    def training_step(self, model: nn.Module, inputs: Dict[str, Union[torch.Tensor, Any]]) -> torch.Tensor:
+    def training_step(self, model: nn.Module, inputs: Dict[str, Union[torch.Tensor, Any]], step: int) -> torch.Tensor:
         """
         Perform a training step on a batch of inputs.
 
@@ -3305,8 +3307,21 @@ class Trainer:
 
         with self.compute_loss_context_manager():
             loss = self.compute_loss(model, inputs)
-
         del inputs
+        # TOdO: add args
+        args = {"filter": "ema", "window_size": 100, "lamb": 0.5}  # choices=["none", "ma", "ema", "fir"]
+        trigger = step < 500 if args.two_stage else False
+        if self.args.grokking_filter == "none":
+            pass
+        elif self.args.grokking_filter == "ma":
+            # TODO: Where does grads come from?
+            grads = gradfilter_ma(
+                model, grads=model.grads, window_size=self.args.grokking_window, lamb=self.args.lamb, trigger=trigger
+            )
+        elif self.args.grokking_filter == "ema":
+            grads = gradfilter_ema(model, grads=model.grads, alpha=self.args.grokking_alpha, lamb=args.lamb)
+        else:
+            raise ValueError(f"Invalid gradient filter type `{self.args.grokking_filter}`")
 
         kwargs = {}
 
