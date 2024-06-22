@@ -3311,7 +3311,7 @@ class Trainer:
         del inputs
         # TOdO: add args
         args = {"filter": "ema", "window_size": 100, "lamb": 0.5}  # choices=["none", "ma", "ema", "fir"]
-        trigger = self.state.global_step < 500 if args.two_stage else False
+        trigger = self.state.global_step < 500 # if args.two_stage else False
         if self.args.grokking_filter == "none":
             pass
         elif self.args.grokking_filter == "ma":
@@ -3320,7 +3320,7 @@ class Trainer:
                 model, grads=grads, window_size=self.args.grokking_window, lamb=self.args.lamb, trigger=trigger
             )
         elif self.args.grokking_filter == "ema":
-            grads = gradfilter_ema(model, grads=grads, alpha=self.args.grokking_alpha, lamb=args.lamb)
+            grads = gradfilter_ema(model, grads=grads, alpha=self.args.grokking_alpha, lamb=self.args.lamb)
         else:
             raise ValueError(f"Invalid gradient filter type `{self.args.grokking_filter}`")
 
