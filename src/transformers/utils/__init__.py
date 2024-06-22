@@ -63,6 +63,7 @@ from .generic import (
     transpose,
     working_or_temp_dir,
 )
+from .grokking_utils import gradfilter_ema, gradfilter_ma
 from .hub import (
     CLOUDFRONT_DISTRIB_PREFIX,
     HF_MODULES_CACHE,
