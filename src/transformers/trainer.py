@@ -3310,19 +3310,7 @@ class Trainer:
             loss = self.compute_loss(model, inputs)
         del inputs
         # TOdO: add args
-        args = {"filter": "ema", "window_size": 100, "lamb": 0.5}  # choices=["none", "ma", "ema", "fir"]
-        trigger = self.state.global_step < 500 # if args.two_stage else False
-        if self.args.grokking_filter == "none":
-            pass
-        elif self.args.grokking_filter == "ma":
-            # TODO: Where does grads come from?
-            grads = gradfilter_ma(
-                model, grads=grads, window_size=self.args.grokking_window, lamb=self.args.lamb, trigger=trigger
-            )
-        elif self.args.grokking_filter == "ema":
-            grads = gradfilter_ema(model, grads=grads, alpha=self.args.grokking_alpha, lamb=self.args.lamb)
-        else:
-            raise ValueError(f"Invalid gradient filter type `{self.args.grokking_filter}`")
+        trigger = self.state.global_step > self.args.grokking_threshold # if args.two_stage else False
 
         kwargs = {}
 
@@ -3338,7 +3326,17 @@ class Trainer:
                 scaled_loss.backward()
         else:
             self.accelerator.backward(loss, **kwargs)
-
+        if trigger:
+            if self.args.grokking_filter == "none":
+                pass
+            elif self.args.grokking_filter == "ma":
+                grads = gradfilter_ma(
+                    model, grads=grads, window_size=self.args.grokking_window, lamb=self.args.lamb, trigger=trigger
+                )
+            elif self.args.grokking_filter == "ema":
+                grads = gradfilter_ema(model, grads=grads, alpha=self.args.grokking_alpha, lamb=self.args.lamb)
+            else:
+                raise ValueError(f"Invalid gradient filter type `{self.args.grokking_filter}`")
         return loss.detach() / self.args.gradient_accumulation_steps, grads
 
     def compute_loss(self, model, inputs, return_outputs=False):

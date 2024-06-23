@@ -1,5 +1,7 @@
+import traceback
 from collections import deque
-from typing import Dict, Optional, Literal
+from typing import Dict, Literal, Optional
+
 import torch
 import torch.nn as nn
 
@@ -39,11 +41,8 @@ def gradfilter_ema(
     alpha: float = 0.98,
     lamb: float = 2.0,
 ) -> Dict[str, torch.Tensor]:
-    try:
-        if grads is None:
-            grads = {n: p.grad.data.detach() for n, p in m.named_parameters() if p.requires_grad}
-    except:  # noqa: E722
-        raise Exception(f"grads = {repr(grads)}, model = {repr(m)}")
+    if grads is None:
+        grads = {n: p.grad.data.detach() for n, p in m.named_parameters() if p.requires_grad}
     for n, p in m.named_parameters():
         if p.requires_grad:
             grads[n] = grads[n] * alpha + p.grad.data.detach() * (1 - alpha)
